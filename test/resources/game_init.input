@@ -1,0 +1,10 @@
+turn 0
+loadtime 3000  
+turntime 1000  
+rows 20
+cols 20  
+turns 500  
+viewradius2 55  
+attackradius2 5  
+spawnradius2 1  
+ready
