@@ -9,7 +9,7 @@
   containing one entry per a column"}
   game-map nil)
 
-(def settings {})
+(def settings {:ready false})
 (def food [])
 (def water [])
 (def ants [])
@@ -71,16 +71,9 @@
 (defn init-game
   "Initiliazes the game state based on the bot input
   read from standard input"
-  ([] (init-game (java.io.BufferedReader. *in*)))
-  ([rdr]
-     (let [input-map
-           (reduce
-            parse-settings
-            {}
-            (line-seq rdr))]
-       (def game-map (make-long-map (:rows input-map) (:cols input-map)))
-       (def settings input-map)
-       )))
+  []
+  (def settings (parse-settings settings (read-line))))
+  
 
 (defn lookup-map
   "Look up what's at the given position in the map"
@@ -93,9 +86,16 @@
 
 (defn print-map
   ([]
-     (pprint game-map))
-  ([map]
-     (pprint map)))
+     (print-map game-map (:rows settings) (:cols settings)))
+  ([map rows cols]
+     (println
+      (second (reduce
+               (fn [[num repr] nxt]
+                 (if (= num cols)
+                   (vector 1 (str repr "\n" nxt " "))
+                   (vector (+ num 1) (str repr nxt " "))))
+               [0 ""]
+               game-map)))))
 
 (defn clear-game-state []
   (def food [])
@@ -109,3 +109,15 @@
      (clear-game-state)
      (doseq [line (line-seq rdr)]
        (parse-update line))))
+
+(defn get-ants [player]
+  (filter (fn [x] (= player (nth x 2))) ants))
+
+(defn my-ants []
+  (get-ants 0))
+
+(defn -main []
+  (while (not (:ready settings))
+    (init-game))
+  (def game-map (make-long-map (:rows settings) (:cols settings)))
+  (print-map))
