@@ -16,6 +16,7 @@
 (def dead-ants [])
 (def turn 0)
 (def go false)
+(def last-go 'nil)
 (def map-state (ref nil))
 
 
@@ -27,6 +28,30 @@
   ([row col num-cols]
      (+  col (* row num-cols))))
 
+(defn north
+  ([[row col]]
+     [(mod (- row 1) (:rows settings)) col])
+  ([row col]
+     [(mod (- row 1) (:rows settings)) col]))
+
+(defn south
+  ([[row col]]
+     [(mod (+ row 1) (:rows settings)) col])
+  ([row col]
+     [(mod (+ row 1) (:rows settings)) col]))
+
+(defn west
+  ([[row col]]
+     [row (mod (- col 1) (:cols settings))])
+  ([row col]
+     [row (mod (- col 1) (:cols settings))]))
+
+(defn east
+  ([[row col]]
+     [row (mod (+ col 1) (:cols settings))])
+  ([row col]
+     [row (mod (+ col 1) (:cols settings))]))
+
 (defn parse-update
   [line]
   (let [split-line (split line #" ")
@@ -34,7 +59,8 @@
         lst->ints (fn [lst] (vec (map str->int lst)))]
     (case (count split-line)
           1 (if (= (first split-line) "go")
-              (def go true))
+              (do (def go true)
+                  (def last-go (System/currentTimeMillis))))
           2 (def turn (Integer. (second split-line)))
           3 (case (first split-line)
                   "f" (let [new-food (lst->ints (rest split-line))]
@@ -92,15 +118,6 @@
   []
   (def settings (parse-settings settings (read-line))))
 
-(defn lookup-map
-  "Look up what's at the given position in the map"
-  [row col]
-  (nth game-map (+ (* row (:rows settings)) col)))
-
-(defn update-map
-  [row col val]
-  (assoc game-map (+ (* row (:rows settings)) col) val))
-
 (defn print-map
   ([]
      (print-map game-map (:rows settings) (:cols settings)))
@@ -132,21 +149,83 @@
 (defn my-ants []
   (get-ants 0))
 
+(defn enemy-ants []
+  (filter (fn [x] (not= 0 (nth x 2))) ants))
+
+(defn distance
+  [[r1 c1] [r2 c2]]
+  (let [dr (min (Math/abs (- r1 r2))
+                (- (:rows settings) (Math/abs (- r1 r2))))
+        dc (min (Math/abs (- c1 c2))
+                (- (:cols settings) (Math/abs (- c1 c2))))]
+    (Math/sqrt (+ (Math/pow dr 2) (Math/pow dc 2)))))
+
+(defn direction
+  [[r1 c1 :as origin] [r2 c2 :as destination]]
+  (reduce
+   (fn [accum [dir dist]]
+     (if (< dist (distance origin destination))
+       (conj accum dir)
+       accum))
+   []
+   [["N" (distance (north origin) destination)]
+    ["E"  (distance (east  origin) destination)]
+    ["S" (distance (south origin) destination)]
+    ["W"  (distance (west  origin) destination)]]))
+
+(defn visible?
+  ([coords]
+     (some
+      (fn [[row col owner]]
+        (<= (distance [row col] coords) (Math/sqrt (:viewradius2 settings))))
+      (my-ants))))
+
 (defn end-turn []
   (def go false)
   (println "go")
   (flush))
 
+(defn clear-map-state []
+  (dosync
+   (ref-set map-state game-map)))
+
+(defn passable?
+  ([[row col]]
+     (not= :W (nth @map-state (rc->idx row col))))
+  ([row col]
+     (not= :W (nth @map-state (rc->idx row col)))))
+
+(defn random-order
+  ([[row col owner :as ant]]
+     (cond (passable? (north row col)) 
+           (issue-order row col "N")
+           (passable? (east row col))
+           (issue-order row col "E")
+           (passable? (south row col))
+           (issue-order row col "S")
+           (passable? (west row col))
+           (issue-order row col "W"))))
+
+(defn issue-order [row col dir]
+  (println (str "o " row " " col " " dir))
+  (flush))
+
+(defn make-orders []
+  (for [ant (my-ants)]
+    (random-order ant)))
+
+(defn time-remaining []
+  (- (System/currentTimeMillis) last-go))
+
 (defn -main []
   (while (not (:ready settings))
     (init-game))
   (def game-map (make-map (:rows settings) (:cols settings)))
-  (dosync
-   (ref-set map-state game-map))
   (while true
-    (println (str "turn is " turn))
-    (print-map @map-state)
+    (clear-map-state)
     (while (not go)
       (update-game))
     (println (str "turn is " turn))
+    (print-map @map-state)
+    (make-orders)
     (end-turn)))
